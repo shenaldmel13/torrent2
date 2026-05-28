@@ -14,7 +14,7 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [view, setView] = useState<"transfers" | "library">("transfers");
   const [history, setHistory] = useState<TorrentHistoryItem[]>([]);
-  const [serverStatus, setServerStatus] = useState<"checking" | "online" | "offline" | "static">("checking");
+  const [serverStatus, setServerStatus] = useState<"checking" | "online" | "offline" | "static" | "cookie-restricted">("checking");
 
   useEffect(() => {
     socket = io({ path: "/socket.io" });
@@ -43,7 +43,10 @@ export default function App() {
         }
         
         const text = await res.text();
-        if (text.trim().startsWith("<!DOCTYPE")) {
+        const normalized = text.toLowerCase();
+        if (normalized.includes("aistudio_auth_flow") || normalized.includes("authflowtestcookie") || normalized.includes("redirecttoreturnurl")) {
+          setServerStatus("cookie-restricted");
+        } else if (text.trim().startsWith("<!DOCTYPE") || normalized.includes("<html") || normalized.includes("<body")) {
           setServerStatus("static");
         } else {
           setServerStatus("offline");
@@ -230,6 +233,12 @@ export default function App() {
                 <span className="text-[10px] font-bold text-emerald-400 font-mono tracking-tight uppercase">Server Online</span>
               </>
             )}
+            {serverStatus === "cookie-restricted" && (
+              <>
+                <div className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse" />
+                <span className="text-[10px] font-bold text-indigo-400 font-mono tracking-tight uppercase">Iframe Shield Active</span>
+              </>
+            )}
             {serverStatus === "offline" && (
               <>
                 <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
@@ -281,6 +290,38 @@ export default function App() {
                 <div className="pt-2 flex flex-wrap gap-4 items-center">
                   <span className="text-xs font-semibold px-2.5 py-1 bg-rose-400/10 text-rose-400 border border-rose-500/20 rounded-md">
                     Action Required: Please run or deploy this application as a full-stack container (e.g. on Cloud Run).
+                  </span>
+                </div>
+              </div>
+            </motion.div>
+          )}
+
+          {serverStatus === "cookie-restricted" && (
+            <motion.div
+              initial={{ opacity: 0, y: -10, height: 0 }}
+              animate={{ opacity: 1, y: 0, height: "auto" }}
+              exit={{ opacity: 0, y: -10, height: 0 }}
+              className="p-6 rounded-2xl bg-[#111322] border border-indigo-500/20 text-indigo-200 flex flex-col md:flex-row gap-5 items-start shadow-2xl"
+            >
+              <div className="p-3 bg-indigo-500/10 border border-indigo-500/30 rounded-xl text-indigo-400 shrink-0">
+                <Server className="w-6 h-6 animate-pulse" />
+              </div>
+              <div className="space-y-2 flex-1">
+                <h3 className="text-base font-bold text-indigo-300">Iframe Cookie Restriction Deflected (Authorization Loop)</h3>
+                <p className="text-sm text-indigo-200/80 leading-relaxed">
+                  The Node.js backend is fully operational on port 3000, but your browser is blocking required sandbox authentication cookies inside the embedded iframe. This is common cross-site privacy protection behavior.
+                </p>
+                <div className="pt-2 flex flex-wrap gap-4 items-center">
+                  <a
+                    href={window.location.href}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-2 text-xs font-semibold px-4 py-2 bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white transition-colors duration-200 rounded-xl shadow-lg shadow-indigo-600/30"
+                  >
+                    Open App in New Tab
+                  </a>
+                  <span className="text-xs text-indigo-300/60 font-mono">
+                    Once opened in a new window, session cookies authorize immediately to unlock the full Seedbox client features.
                   </span>
                 </div>
               </div>

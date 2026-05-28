@@ -11,6 +11,25 @@ import { createRequire } from "module";
 const require = createRequire(import.meta.url);
 const archiver = require("archiver");
 
+// Setup filesystem log capture for background diagnostics
+try {
+  const logFile = path.join(process.cwd(), "debug.log");
+  fs.writeFileSync(logFile, `=== Server Init at ${new Date().toISOString()} ===\n`);
+  const originalLog = console.log;
+  const originalError = console.error;
+  console.log = (...args) => {
+    const msg = args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ');
+    fs.appendFileSync(logFile, `[LOG] ${msg}\n`);
+    originalLog(...args);
+  };
+  console.error = (...args) => {
+    const msg = args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ');
+    fs.appendFileSync(logFile, `[ERR] ${msg}\n`);
+    originalError(...args);
+  };
+} catch (e) {}
+
+
 const upload = multer({ dest: "/tmp/uploads/" });
 
 // Advanced WebTorrent client configuration for seedbox-like performance
