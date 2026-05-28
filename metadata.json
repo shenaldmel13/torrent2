@@ -1,0 +1,6 @@
+{
+  "name": "Torrent2Direct",
+  "description": "Directly download and stream torrent content in your browser via a Node proxy backend.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
