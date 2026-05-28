@@ -14,28 +14,6 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [view, setView] = useState<"transfers" | "library">("transfers");
   const [history, setHistory] = useState<TorrentHistoryItem[]>([]);
-  const [backendUnreachable, setBackendUnreachable] = useState(false);
-
-  useEffect(() => {
-    // Check if Express backend is running and responding
-    fetch("/api/health")
-      .then(async (res) => {
-        const contentType = res.headers.get("content-type") || "";
-        if (!res.ok || !contentType.includes("application/json")) {
-          // If response is HTML, it means the server is likely a static host (like Netlify)
-          // returning index.html as a catch-all redirect.
-          setBackendUnreachable(true);
-        } else {
-          const data = await res.json();
-          if (data.status !== "ok") {
-            setBackendUnreachable(true);
-          }
-        }
-      })
-      .catch(() => {
-        setBackendUnreachable(true);
-      });
-  }, []);
 
   useEffect(() => {
     socket = io({ path: "/socket.io" });
@@ -95,6 +73,42 @@ export default function App() {
     }
   }, [torrents]);
 
+  const safeParseJson = async (response: Response, defaultError: string) => {
+    const contentType = response.headers.get("content-type");
+    const isJson = contentType && contentType.includes("application/json");
+
+    if (!response.ok) {
+      if (isJson) {
+        try {
+          const body = await response.json();
+          throw new Error(body.error || defaultError);
+        } catch (e: any) {
+          throw new Error(e.message || defaultError);
+        }
+      } else {
+        const text = await response.text();
+        if (text.trim().startsWith("<!DOCTYPE")) {
+          throw new Error(
+            "The backend returned an HTML page instead of JSON. This usually indicates that the backend Express server is not running or accessible (e.g., if hosted on static-only hosting like Netlify) or route is missing."
+          );
+        }
+        throw new Error(text || `Request failed with status ${response.status}`);
+      }
+    }
+
+    if (!isJson) {
+      const text = await response.text();
+      if (text.trim().startsWith("<!DOCTYPE")) {
+        throw new Error(
+          "Received an HTML page instead of the API JSON response. A running Node/Express backend is required for torrent downloads; this app cannot run on static-only providers like Netlify without full-stack container support."
+        );
+      }
+      throw new Error(`Expected JSON but received: ${text.slice(0, 100)}`);
+    }
+
+    return response.json();
+  };
+
   const handleMagnetSubmit = async (magnetURI: string) => {
     setError(null);
     try {
@@ -103,10 +117,7 @@ export default function App() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ magnetURI }),
       });
-      if (!res.ok) {
-        const body = await res.json();
-        throw new Error(body.error || "Failed to add torrent");
-      }
+      await safeParseJson(res, "Failed to add magnet link");
       setView("transfers");
     } catch (err: any) {
       setError(err.message);
@@ -122,10 +133,7 @@ export default function App() {
         method: "POST",
         body: formData,
       });
-      if (!res.ok) {
-        const body = await res.json();
-        throw new Error(body.error || "Failed to upload torrent");
-      }
+      await safeParseJson(res, "Failed to upload torrent file");
       setView("transfers");
     } catch (err: any) {
       setError(err.message);
@@ -133,15 +141,33 @@ export default function App() {
   };
 
   const handlePause = async (infoHash: string) => {
-    await fetch(`/api/torrents/${infoHash}/pause`, { method: "POST" });
+    setError(null);
+    try {
+      const res = await fetch(`/api/torrents/${infoHash}/pause`, { method: "POST" });
+      await safeParseJson(res, "Failed to pause torrent");
+    } catch (err: any) {
+      setError(err.message);
+    }
   };
 
   const handleResume = async (infoHash: string) => {
-    await fetch(`/api/torrents/${infoHash}/resume`, { method: "POST" });
+    setError(null);
+    try {
+      const res = await fetch(`/api/torrents/${infoHash}/resume`, { method: "POST" });
+      await safeParseJson(res, "Failed to resume torrent");
+    } catch (err: any) {
+      setError(err.message);
+    }
   };
 
   const handleRemove = async (infoHash: string) => {
-    await fetch(`/api/torrents/${infoHash}`, { method: "DELETE" });
+    setError(null);
+    try {
+      const res = await fetch(`/api/torrents/${infoHash}`, { method: "DELETE" });
+      await safeParseJson(res, "Failed to remove torrent");
+    } catch (err: any) {
+      setError(err.message);
+    }
   };
 
   const removeFromHistory = (infoHash: string) => {
@@ -178,23 +204,6 @@ export default function App() {
       </header>
 
       <main className="flex-1 overflow-auto p-4 md:p-8 flex flex-col gap-8 max-w-7xl mx-auto w-full">
-        {backendUnreachable && (
-          <div className="bg-amber-500/10 border border-amber-500/20 rounded-2xl p-6 text-amber-300 flex flex-col sm:flex-row gap-4 items-start shadow-lg">
-            <div className="p-3 bg-amber-500/20 rounded-xl">
-              <CloudLightning className="w-6 h-6 text-amber-400 animate-pulse" />
-            </div>
-            <div className="space-y-1">
-              <h3 className="font-bold text-lg text-white">Full-Stack Server Offline or Static Host Detected</h3>
-              <p className="text-sm text-gray-300">
-                This seedbox requires a full-stack Node.js server to download, zip, and stream torrents.
-              </p>
-              <p className="text-xs text-gray-400">
-                If you have deployed this app to a purely static provider like Netlify, backend actions such as downloading files or fetching ZIP archives (using <code className="text-amber-400 font-mono">/api/stream/*</code>) will fail with <code className="text-white bg-white/10 px-1 py-0.5 rounded">404</code> because server-side engines cannot run on static web hosts. Please run or host this application on full-stack platforms like Google Cloud Run, Render, VPS, or our AI Studio Development Preview!
-              </p>
-            </div>
-          </div>
-        )}
-
         {view === "transfers" ? (
           <section className="flex flex-col md:flex-row gap-8">
             <div className="flex-1 max-w-md w-full shrink-0">

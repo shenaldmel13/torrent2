@@ -112,11 +112,6 @@ async function startServer() {
 
   app.use(express.json());
 
-  // Simple backend health-check route for detection by frontend
-  app.get("/api/health", (req, res) => {
-    res.json({ status: "ok" });
-  });
-
   // WebSocket for progress updates
   io.on("connection", (socket) => {
     socket.emit("torrents", Object.values(torrentsState));
@@ -179,8 +174,7 @@ async function startServer() {
 
   app.delete("/api/torrents/:infoHash", async (req, res) => {
     const { infoHash } = req.params;
-    const hash = infoHash.toLowerCase();
-    const torrent = (client.get(hash) || client.torrents.find((t) => t.infoHash === hash)) as any;
+    const torrent = await client.get(infoHash);
     if (!torrent) return res.status(404).json({ error: "Not found" });
 
     torrent.destroy();
@@ -192,8 +186,7 @@ async function startServer() {
 
   app.post("/api/torrents/:infoHash/pause", async (req, res) => {
     const { infoHash } = req.params;
-    const hash = infoHash.toLowerCase();
-    const torrent = (client.get(hash) || client.torrents.find((t) => t.infoHash === hash)) as any;
+    const torrent = await client.get(infoHash);
     if (!torrent) return res.status(404).json({ error: "Not found" });
 
     torrent.pause();
@@ -204,8 +197,7 @@ async function startServer() {
 
   app.post("/api/torrents/:infoHash/resume", async (req, res) => {
     const { infoHash } = req.params;
-    const hash = infoHash.toLowerCase();
-    const torrent = (client.get(hash) || client.torrents.find((t) => t.infoHash === hash)) as any;
+    const torrent = await client.get(infoHash);
     if (!torrent) return res.status(404).json({ error: "Not found" });
 
     torrent.resume();
@@ -216,8 +208,7 @@ async function startServer() {
 
   app.get("/api/stream/:infoHash/zip", async (req, res) => {
     const { infoHash } = req.params;
-    const hash = infoHash.toLowerCase();
-    const torrent = (client.get(hash) || client.torrents.find((t) => t.infoHash === hash)) as any;
+    const torrent = await client.get(infoHash);
     if (!torrent) return res.status(404).send("Torrent not found");
 
     res.writeHead(200, {
@@ -233,7 +224,7 @@ async function startServer() {
 
     archive.pipe(res);
 
-    torrent.files.forEach((file: any) => {
+    torrent.files.forEach((file) => {
       // Stream each torrent file directly into the ZIP archive.
       // Downloading the ZIP will force the torrent to prioritize downloading these pieces.
       archive.append(file.createReadStream() as any, { name: file.path });
@@ -244,8 +235,7 @@ async function startServer() {
 
   app.get("/api/stream/:infoHash/:fileIndex", async (req, res) => {
     const { infoHash, fileIndex } = req.params;
-    const hash = infoHash.toLowerCase();
-    const torrent = (client.get(hash) || client.torrents.find((t) => t.infoHash === hash)) as any;
+    const torrent = await client.get(infoHash);
     if (!torrent) return res.status(404).send("Torrent not found");
 
     const file = torrent.files[parseInt(fileIndex)];
@@ -275,6 +265,11 @@ async function startServer() {
       });
       file.createReadStream().pipe(res);
     }
+  });
+
+  // Catch-all API 404 handler to return JSON rather than default HTML
+  app.use("/api/*", (req, res) => {
+    res.status(404).json({ error: `API endpoint not found: ${req.method} ${req.originalUrl}` });
   });
 
   // Vite middleware for development
