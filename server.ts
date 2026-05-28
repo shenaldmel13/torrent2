@@ -276,13 +276,39 @@ async function startServer() {
     app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), "dist");
+
+    // Explicit middleware to intercept JS/CSS/HTML requests and set correct headers
+    app.use((req, res, next) => {
+      const pathname = req.path;
+      if (pathname.endsWith(".js") || pathname.endsWith(".mjs")) {
+        res.setHeader("Content-Type", "application/javascript; charset=utf-8");
+        res.setHeader("X-Content-Type-Options", "nosniff");
+      } else if (pathname.endsWith(".css")) {
+        res.setHeader("Content-Type", "text/css; charset=utf-8");
+        res.setHeader("X-Content-Type-Options", "nosniff");
+      } else if (pathname.endsWith(".html")) {
+        res.setHeader("Content-Type", "text/html; charset=utf-8");
+      } else if (pathname.endsWith(".svg")) {
+        res.setHeader("Content-Type", "image/svg+xml; charset=utf-8");
+      } else if (pathname.endsWith(".png")) {
+        res.setHeader("Content-Type", "image/png");
+      } else if (pathname.endsWith(".jpg") || pathname.endsWith(".jpeg")) {
+        res.setHeader("Content-Type", "image/jpeg");
+      } else if (pathname.endsWith(".ico")) {
+        res.setHeader("Content-Type", "image/x-icon");
+      }
+      next();
+    });
+
     app.use(
       express.static(distPath, {
         setHeaders: (res, filePath) => {
           if (filePath.endsWith(".js") || filePath.endsWith(".mjs")) {
             res.setHeader("Content-Type", "application/javascript; charset=utf-8");
+            res.setHeader("X-Content-Type-Options", "nosniff");
           } else if (filePath.endsWith(".css")) {
             res.setHeader("Content-Type", "text/css; charset=utf-8");
+            res.setHeader("X-Content-Type-Options", "nosniff");
           } else if (filePath.endsWith(".html")) {
             res.setHeader("Content-Type", "text/html; charset=utf-8");
           } else if (filePath.endsWith(".svg")) {
