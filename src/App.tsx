@@ -4,7 +4,7 @@ import { Torrent, TorrentHistoryItem } from "./types";
 import { UploadArea } from "./components/UploadArea";
 import { TorrentCard } from "./components/TorrentCard";
 import { motion, AnimatePresence } from "motion/react";
-import { CloudLightning, Clock, Play } from "lucide-react";
+import { CloudLightning, Clock, Play, Server, Wifi, WifiOff, AlertTriangle, CheckCircle } from "lucide-react";
 import { format } from "date-fns";
 
 let socket: Socket;
@@ -14,6 +14,7 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [view, setView] = useState<"transfers" | "library">("transfers");
   const [history, setHistory] = useState<TorrentHistoryItem[]>([]);
+  const [serverStatus, setServerStatus] = useState<"checking" | "online" | "offline" | "static">("checking");
 
   useEffect(() => {
     socket = io({ path: "/socket.io" });
@@ -29,8 +30,35 @@ export default function App() {
       } catch (e) {}
     }
 
+    const checkServer = async () => {
+      try {
+        const res = await fetch("/api/health");
+        const contentType = res.headers.get("content-type");
+        if (res.ok && contentType && contentType.includes("application/json")) {
+          const data = await res.json();
+          if (data && data.status === "ok") {
+            setServerStatus("online");
+            return;
+          }
+        }
+        
+        const text = await res.text();
+        if (text.trim().startsWith("<!DOCTYPE")) {
+          setServerStatus("static");
+        } else {
+          setServerStatus("offline");
+        }
+      } catch (err) {
+        setServerStatus("offline");
+      }
+    };
+
+    checkServer();
+    const intervalId = setInterval(checkServer, 8000);
+
     return () => {
       socket.disconnect();
+      clearInterval(intervalId);
     };
   }, []);
 
@@ -187,23 +215,97 @@ export default function App() {
             Torrent<span className="text-cyan-400">2Direct</span>
           </h1>
         </div>
-        <nav className="flex items-center gap-6">
-          <button
-            onClick={() => setView("transfers")}
-            className={`text-sm font-medium border-b-2 pb-1 transition-colors ${view === "transfers" ? "text-cyan-400 border-cyan-400" : "text-gray-400 border-transparent hover:text-white"}`}
-          >
-            Transfers
-          </button>
-          <button
-            onClick={() => setView("library")}
-            className={`text-sm font-medium border-b-2 pb-1 transition-colors ${view === "library" ? "text-cyan-400 border-cyan-400" : "text-gray-400 border-transparent hover:text-white"}`}
-          >
-            Library
-          </button>
-        </nav>
+
+        <div className="flex items-center gap-6">
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-white/10 bg-white/[0.02]">
+            {serverStatus === "checking" && (
+              <>
+                <div className="w-2 h-2 rounded-full bg-yellow-400 animate-pulse" />
+                <span className="text-[10px] font-bold text-yellow-400 font-mono tracking-tight uppercase">Checking Server</span>
+              </>
+            )}
+            {serverStatus === "online" && (
+              <>
+                <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                <span className="text-[10px] font-bold text-emerald-400 font-mono tracking-tight uppercase">Server Online</span>
+              </>
+            )}
+            {serverStatus === "offline" && (
+              <>
+                <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                <span className="text-[10px] font-bold text-red-400 font-mono tracking-tight uppercase">Server Offline</span>
+              </>
+            )}
+            {serverStatus === "static" && (
+              <>
+                <div className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
+                <span className="text-[10px] font-bold text-rose-400 font-mono tracking-tight uppercase">Static Mode (Netlify)</span>
+              </>
+            )}
+          </div>
+
+          <nav className="flex items-center gap-6">
+            <button
+              onClick={() => setView("transfers")}
+              className={`text-sm font-medium border-b-2 pb-1 transition-colors ${view === "transfers" ? "text-cyan-400 border-cyan-400" : "text-gray-400 border-transparent hover:text-white"}`}
+            >
+              Transfers
+            </button>
+            <button
+              onClick={() => setView("library")}
+              className={`text-sm font-medium border-b-2 pb-1 transition-colors ${view === "library" ? "text-cyan-400 border-cyan-400" : "text-gray-400 border-transparent hover:text-white"}`}
+            >
+              Library
+            </button>
+          </nav>
+        </div>
       </header>
 
       <main className="flex-1 overflow-auto p-4 md:p-8 flex flex-col gap-8 max-w-7xl mx-auto w-full">
+        <AnimatePresence>
+          {serverStatus === "static" && (
+            <motion.div
+              initial={{ opacity: 0, y: -10, height: 0 }}
+              animate={{ opacity: 1, y: 0, height: "auto" }}
+              exit={{ opacity: 0, y: -10, height: 0 }}
+              className="p-6 rounded-2xl bg-rose-950/20 border border-rose-500/20 text-rose-200 flex flex-col md:flex-row gap-5 items-start shadow-2xl"
+            >
+              <div className="p-3 bg-rose-500/10 border border-rose-500/30 rounded-xl text-rose-400 shrink-0">
+                <AlertTriangle className="w-6 h-6" />
+              </div>
+              <div className="space-y-2 flex-1">
+                <h3 className="text-base font-bold text-rose-300">Netlify Static Hosting Detected</h3>
+                <p className="text-sm text-rose-200/80 leading-relaxed">
+                  This seedbox application performs torrent downloading, raw streaming, and real-time updates which require a running Node.js backend. Netlify is a <strong>static-only host</strong> and cannot execute persistent backend servers.
+                </p>
+                <div className="pt-2 flex flex-wrap gap-4 items-center">
+                  <span className="text-xs font-semibold px-2.5 py-1 bg-rose-400/10 text-rose-400 border border-rose-500/20 rounded-md">
+                    Action Required: Please run or deploy this application as a full-stack container (e.g. on Cloud Run).
+                  </span>
+                </div>
+              </div>
+            </motion.div>
+          )}
+
+          {serverStatus === "offline" && (
+            <motion.div
+              initial={{ opacity: 0, y: -10, height: 0 }}
+              animate={{ opacity: 1, y: 0, height: "auto" }}
+              exit={{ opacity: 0, y: -10, height: 0 }}
+              className="p-6 rounded-2xl bg-amber-950/20 border border-amber-500/20 text-amber-200 flex flex-col md:flex-row gap-5 items-start shadow-2xl"
+            >
+              <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl text-amber-400 shrink-0">
+                <WifiOff className="w-6 h-6" />
+              </div>
+              <div className="space-y-2 flex-1">
+                <h3 className="text-base font-bold text-amber-300">Backend Server Connection Offline</h3>
+                <p className="text-sm text-amber-200/80 leading-relaxed">
+                  The frontend is unable to reach the Node/Express backend on <code>/api</code>. Ensure your backend server is loaded and running on port 3000, or verify that your local development hosting proxy is active.
+                </p>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
         {view === "transfers" ? (
           <section className="flex flex-col md:flex-row gap-8">
             <div className="flex-1 max-w-md w-full shrink-0">

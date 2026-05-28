@@ -129,6 +129,10 @@ async function startServer() {
   });
 
   // REST APIs
+  app.get("/api/health", (req, res) => {
+    res.json({ status: "ok" });
+  });
+
   app.post("/api/torrents/magnet", (req, res) => {
     const { magnetURI } = req.body;
     if (!magnetURI) return res.status(400).json({ error: "Missing magnetURI" });
