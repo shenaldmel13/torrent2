@@ -14,6 +14,28 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [view, setView] = useState<"transfers" | "library">("transfers");
   const [history, setHistory] = useState<TorrentHistoryItem[]>([]);
+  const [backendUnreachable, setBackendUnreachable] = useState(false);
+
+  useEffect(() => {
+    // Check if Express backend is running and responding
+    fetch("/api/health")
+      .then(async (res) => {
+        const contentType = res.headers.get("content-type") || "";
+        if (!res.ok || !contentType.includes("application/json")) {
+          // If response is HTML, it means the server is likely a static host (like Netlify)
+          // returning index.html as a catch-all redirect.
+          setBackendUnreachable(true);
+        } else {
+          const data = await res.json();
+          if (data.status !== "ok") {
+            setBackendUnreachable(true);
+          }
+        }
+      })
+      .catch(() => {
+        setBackendUnreachable(true);
+      });
+  }, []);
 
   useEffect(() => {
     socket = io({ path: "/socket.io" });
@@ -156,6 +178,23 @@ export default function App() {
       </header>
 
       <main className="flex-1 overflow-auto p-4 md:p-8 flex flex-col gap-8 max-w-7xl mx-auto w-full">
+        {backendUnreachable && (
+          <div className="bg-amber-500/10 border border-amber-500/20 rounded-2xl p-6 text-amber-300 flex flex-col sm:flex-row gap-4 items-start shadow-lg">
+            <div className="p-3 bg-amber-500/20 rounded-xl">
+              <CloudLightning className="w-6 h-6 text-amber-400 animate-pulse" />
+            </div>
+            <div className="space-y-1">
+              <h3 className="font-bold text-lg text-white">Full-Stack Server Offline or Static Host Detected</h3>
+              <p className="text-sm text-gray-300">
+                This seedbox requires a full-stack Node.js server to download, zip, and stream torrents.
+              </p>
+              <p className="text-xs text-gray-400">
+                If you have deployed this app to a purely static provider like Netlify, backend actions such as downloading files or fetching ZIP archives (using <code className="text-amber-400 font-mono">/api/stream/*</code>) will fail with <code className="text-white bg-white/10 px-1 py-0.5 rounded">404</code> because server-side engines cannot run on static web hosts. Please run or host this application on full-stack platforms like Google Cloud Run, Render, VPS, or our AI Studio Development Preview!
+              </p>
+            </div>
+          </div>
+        )}
+
         {view === "transfers" ? (
           <section className="flex flex-col md:flex-row gap-8">
             <div className="flex-1 max-w-md w-full shrink-0">
